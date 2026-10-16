@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A simple personal time tracker for hourly work.">
+  <title>Hourly Time Tracker</title>
+  <link rel="stylesheet" href="src/styles.css">
+  <script src="src/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Hourly Time Tracker home">
+      <span class="brand-mark">◷</span>
+      <span>Hourly Tracker</span>
+    </a>
+    <span class="local-note"><span class="status-dot"></span> Saved in this browser</span>
+  </header>
+
+  <main class="container">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">YOUR WORKDAY, AT A GLANCE</p>
+        <h1>Time well tracked.</h1>
+        <p class="subhead">Keep your work sessions organized and your billable hours clear.</p>
+      </div>
+      <label class="rate-control">
+        <span>Hourly rate ($)</span>
+        <input id="hourlyRate" type="number" min="0" step="0.01" value="100" inputmode="decimal">
+      </label>
+    </section>
+
+    <section class="summary-grid" aria-label="Time summary">
+      <article class="summary-card">
+        <span class="summary-label">This week</span>
+        <strong id="weekHours">0h 00m</strong>
+        <span class="summary-detail">Total tracked time</span>
+      </article>
+      <article class="summary-card">
+        <span class="summary-label">Billable earnings</span>
+        <strong id="weekEarnings">$0.00</strong>
+        <span class="summary-detail">Based on your hourly rate</span>
+      </article>
+      <article class="summary-card">
+        <span class="summary-label">Sessions</span>
+        <strong id="weekSessions">0</strong>
+        <span class="summary-detail">Entries this week</span>
+      </article>
+    </section>
+
+    <section class="panel timer-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">CURRENT SESSION</p>
+          <h2>What are you working on?</h2>
+        </div>
+        <span id="timerStatus" class="pill idle"><span class="status-dot"></span> Not tracking</span>
+      </div>
+      <form id="timerForm" class="timer-form">
+        <label class="field grow">
+          <span>Task or project</span>
+          <input id="timerDescription" type="text" maxlength="120" placeholder="e.g. Gitar documentation" required>
+        </label>
+        <div class="timer-readout" id="timerDisplay" aria-live="off">00:00:00</div>
+        <button id="timerButton" class="button primary" type="submit">▶ Start timer</button>
+      </form>
+      <p class="helper" id="timerHelp">Start a timer when you begin. Stop it to save the session to your timesheet.</p>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">TIMESHEET</p>
+          <h2>Work entries</h2>
+        </div>
+        <div class="heading-actions">
+          <label class="week-picker">
+            <span class="sr-only">Choose week</span>
+            <input id="weekStart" type="date" aria-label="Choose week">
+          </label>
+          <button id="exportButton" class="button secondary" type="button">↓ Export CSV</button>
+        </div>
+      </div>
+
+      <form id="entryForm" class="entry-form">
+        <input id="editId" type="hidden">
+        <div class="form-grid">
+          <label class="field">
+            <span>Date</span>
+            <input id="entryDate" type="date" required>
+          </label>
+          <label class="field wide">
+            <span>Task or project</span>
+            <input id="entryDescription" type="text" maxlength="120" placeholder="What did you work on?" required>
+          </label>
+          <label class="field">
+            <span>Start time</span>
+            <input id="entryStart" type="time" required>
+          </label>
+          <label class="field">
+            <span>End time</span>
+            <input id="entryEnd" type="time" required>
+          </label>
+          <div class="form-actions">
+            <button id="saveEntryButton" class="button primary" type="submit">Add entry</button>
+            <button id="cancelEditButton" class="button text-button hidden" type="button">Cancel edit</button>
+          </div>
+        </div>
+        <p class="helper">Entries use your local time. For an overnight session, set an end time earlier than the start time.</p>
+      </form>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Task / project</th><th>Time</th><th>Duration</th><th>Amount</th><th><span class="sr-only">Actions</span></th></tr>
+          </thead>
+          <tbody id="entriesBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state">
+          <span class="empty-icon">◷</span>
+          <strong>No entries for this week yet</strong>
+          <span>Start a timer or add your first work session above.</span>
+        </div>
+      </div>
+      <div class="table-footer">
+        <span id="entryCount">0 entries</span>
+        <span>Week total <strong id="tableWeekTotal">0h 00m</strong></span>
+      </div>
+    </section>
+
+    <footer>
+      <span>Hourly Tracker</span>
+      <span>Your data stays in this browser. Export a CSV for a separate backup.</span>
+    </footer>
+  </main>
+
+  <dialog id="confirmDialog" class="confirm-dialog">
+    <form method="dialog">
+      <h2>Delete this entry?</h2>
+      <p>This action can't be undone unless you have an exported backup.</p>
+      <div class="dialog-actions">
+        <button class="button secondary" value="cancel">Cancel</button>
+        <button id="confirmDeleteButton" class="button danger" value="delete">Delete entry</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
