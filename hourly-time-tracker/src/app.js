@@ -1,451 +1,148 @@
 (() => {
   "use strict";
-
-  const STORAGE_KEY = "hourly-time-tracker-v1";
+  const KEY = "hourly-time-tracker-v2", OLD_KEY = "hourly-time-tracker-v1";
+  const { dateKey, paidMs, unpaid, migrate, validate } = TimeRecords;
   const $ = (id) => document.getElementById(id);
-  const state = {
-    entries: [],
-    hourlyRate: 100,
-    activeTimer: null,
-    deleteId: null,
-    tickHandle: null,
-    toastHandle: null
-  };
-
-  const els = {
-    hourlyRate: $("hourlyRate"),
-    weekHours: $("weekHours"),
-    weekEarnings: $("weekEarnings"),
-    weekSessions: $("weekSessions"),
-    timerForm: $("timerForm"),
-    timerDescription: $("timerDescription"),
-    timerDisplay: $("timerDisplay"),
-    timerButton: $("timerButton"),
-    timerStatus: $("timerStatus"),
-    timerHelp: $("timerHelp"),
-    weekStart: $("weekStart"),
-    exportButton: $("exportButton"),
-    entryForm: $("entryForm"),
-    editId: $("editId"),
-    entryDate: $("entryDate"),
-    entryDescription: $("entryDescription"),
-    entryStart: $("entryStart"),
-    entryEnd: $("entryEnd"),
-    saveEntryButton: $("saveEntryButton"),
-    cancelEditButton: $("cancelEditButton"),
-    entriesBody: $("entriesBody"),
-    emptyState: $("emptyState"),
-    entryCount: $("entryCount"),
-    tableWeekTotal: $("tableWeekTotal"),
-    confirmDialog: $("confirmDialog"),
-    confirmDeleteButton: $("confirmDeleteButton"),
-    toast: $("toast")
-  };
-
-  function localDateString(date = new Date()) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
-
-  function mondayOf(date) {
-    const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const day = result.getDay();
-    result.setDate(result.getDate() - ((day + 6) % 7));
-    return result;
-  }
-
-  function weekDateString(date = new Date()) {
-    return localDateString(mondayOf(date));
-  }
-
-  function dateFromString(value) {
-    const [year, month, day] = value.split("-").map(Number);
-    return new Date(year, month - 1, day);
-  }
-
-  function shiftDateString(value, days) {
-    const date = dateFromString(value);
-    date.setDate(date.getDate() + days);
-    return localDateString(date);
-  }
-
-  function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, (char) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    })[char]);
-  }
-
-  function money(value) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
-  }
-
-  function durationLabel(minutes) {
-    const safeMinutes = Math.max(0, Math.round(minutes));
-    const hours = Math.floor(safeMinutes / 60);
-    const mins = safeMinutes % 60;
-    return `${hours}h ${String(mins).padStart(2, "0")}m`;
-  }
-
-  function durationClock(milliseconds) {
-    const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
-  }
-
-  function timeToMinutes(value) {
-    const [hours, minutes] = value.split(":").map(Number);
-    return hours * 60 + minutes;
-  }
-
-  function entryDuration(entry) {
-    // Timer-created entries retain their exact elapsed duration, including short sessions.
-    if (Number.isFinite(entry.exactDurationMs)) return Math.max(0, entry.exactDurationMs / 60000);
-    let end = timeToMinutes(entry.end);
-    const start = timeToMinutes(entry.start);
-    if (end < start) end += 24 * 60;
-    return end - start;
-  }
-
-  function formatDate(value) {
-    return dateFromString(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  }
-
-  function formatTime(value) {
-    const [hours, minutes] = value.split(":").map(Number);
-    const date = new Date(2000, 0, 1, hours, minutes);
-    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  }
-
-  function persist() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        entries: state.entries,
-        hourlyRate: state.hourlyRate,
-        activeTimer: state.activeTimer
-      }));
-    } catch (error) {
-      showToast("Could not save data in this browser.");
-    }
-  }
-
+  const state = { entries: [], hourlyRate: 100 };
+  let deleteId = null, toastHandle;
+  const escape = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const money = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  const clock = (ms) => { const s = Math.floor(Math.max(0, ms) / 1000); return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(n => String(n).padStart(2, "0")).join(":"); };
+  const duration = (ms) => { const m = Math.round(ms / 60000); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`; };
+  const localInput = (ms) => { const d = new Date(ms); return `${dateKey(d)}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}.${String(d.getMilliseconds()).padStart(3, "0")}`; };
+  const timestamp = (ms) => new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
+  const monday = (value = dateKey(Date.now())) => { const d = new Date(`${value}T12:00`); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return dateKey(d); };
+  const activeDay = () => state.entries.find(e => e.periods.some(p => p.end === null));
+  const current = (day = activeDay()) => day?.periods.find(p => p.end === null);
+  const selected = () => state.entries.filter(e => monday(e.date) === $("weekStart").value).sort((a, b) => b.date.localeCompare(a.date));
+  function toast(message) { $("toast").textContent = message; $("toast").classList.add("show"); clearTimeout(toastHandle); toastHandle = setTimeout(() => $("toast").classList.remove("show"), 4500); }
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { toast("Could not save. Keep this page open and export a backup."); } }
   function load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      if (Array.isArray(saved.entries)) {
-        state.entries = saved.entries.filter((entry) =>
-          entry && typeof entry.id === "string" &&
-          typeof entry.date === "string" &&
-          typeof entry.description === "string" &&
-          typeof entry.start === "string" &&
-          typeof entry.end === "string"
-        );
-      }
-      if (Number.isFinite(Number(saved.hourlyRate)) && Number(saved.hourlyRate) >= 0) {
-        state.hourlyRate = Number(saved.hourlyRate);
-      }
-      if (saved.activeTimer && typeof saved.activeTimer.startedAt === "number" &&
-          typeof saved.activeTimer.description === "string") {
-        state.activeTimer = saved.activeTimer;
-      }
-    } catch (error) {
-      showToast("Saved data could not be read. You can start a fresh timesheet.");
-    }
-  }
-
-  function selectedWeek() {
-    return els.weekStart.value || weekDateString();
-  }
-
-  function entriesForSelectedWeek() {
-    const start = selectedWeek();
-    const end = shiftDateString(start, 7);
-    return state.entries
-      .filter((entry) => entry.date >= start && entry.date < end)
-      .sort((a, b) => b.date.localeCompare(a.date) || b.start.localeCompare(a.start));
-  }
-
-  function totalMinutes(entries) {
-    return entries.reduce((sum, entry) => sum + entryDuration(entry), 0);
-  }
-
-  function renderSummary() {
-    const entries = entriesForSelectedWeek();
-    const minutes = totalMinutes(entries);
-    els.weekHours.textContent = durationLabel(minutes);
-    els.weekEarnings.textContent = money((minutes / 60) * state.hourlyRate);
-    els.weekSessions.textContent = String(entries.length);
-    els.tableWeekTotal.textContent = durationLabel(minutes);
-    els.entryCount.textContent = `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`;
-  }
-
-  function renderEntries() {
-    const entries = entriesForSelectedWeek();
-    els.emptyState.classList.toggle("hidden", entries.length > 0);
-    els.entriesBody.innerHTML = entries.map((entry) => {
-      const minutes = entryDuration(entry);
-      const endDayOffset = timeToMinutes(entry.end) < timeToMinutes(entry.start) ? " (+1 day)" : "";
-      return `<tr>
-        <td class="muted-cell">${formatDate(entry.date)}</td>
-        <td class="task-cell" title="${escapeHtml(entry.description)}">${escapeHtml(entry.description)}</td>
-        <td class="muted-cell">${formatTime(entry.start)}–${formatTime(entry.end)}${endDayOffset}</td>
-        <td class="duration-cell">${durationLabel(minutes)}</td>
-        <td class="amount-cell">${money(minutes / 60 * state.hourlyRate)}</td>
-        <td><div class="row-actions">
-          <button class="icon-button" type="button" data-action="edit" data-id="${escapeHtml(entry.id)}" aria-label="Edit ${escapeHtml(entry.description)}" title="Edit entry">✎</button>
-          <button class="icon-button" type="button" data-action="delete" data-id="${escapeHtml(entry.id)}" aria-label="Delete ${escapeHtml(entry.description)}" title="Delete entry">×</button>
-        </div></td>
-      </tr>`;
-    }).join("");
-    renderSummary();
-  }
-
-  function renderTimer() {
-    if (state.activeTimer) {
-      const elapsed = Date.now() - state.activeTimer.startedAt;
-      els.timerDisplay.textContent = durationClock(elapsed);
-      els.timerStatus.className = "pill active";
-      els.timerStatus.innerHTML = '<span class="status-dot"></span> Tracking now';
-      els.timerButton.textContent = "■ Stop & save";
-      els.timerButton.classList.remove("primary");
-      els.timerButton.classList.add("danger");
-      els.timerDescription.value = state.activeTimer.description;
-      els.timerDescription.readOnly = true;
-      els.timerHelp.textContent = "Timer is running. Stop it to save this session to your timesheet.";
-    } else {
-      els.timerDisplay.textContent = "00:00:00";
-      els.timerStatus.className = "pill idle";
-      els.timerStatus.innerHTML = '<span class="status-dot"></span> Not tracking';
-      els.timerButton.textContent = "▶ Start timer";
-      els.timerButton.classList.remove("danger");
-      els.timerButton.classList.add("primary");
-      els.timerDescription.readOnly = false;
-      els.timerHelp.textContent = "Start a timer when you begin. Stop it to save the session to your timesheet.";
-    }
-  }
-
-  function render() {
-    renderEntries();
-    renderTimer();
-  }
-
-  function showToast(message) {
-    els.toast.textContent = message;
-    els.toast.classList.add("show");
-    clearTimeout(state.toastHandle);
-    state.toastHandle = setTimeout(() => els.toast.classList.remove("show"), 2600);
-  }
-
-  function resetEntryForm() {
-    els.entryForm.reset();
-    els.editId.value = "";
-    els.entryDate.value = localDateString();
-    els.saveEntryButton.textContent = "Add entry";
-    els.cancelEditButton.classList.add("hidden");
-  }
-
-  function startTimer(description) {
-    state.activeTimer = {
-      description: description.trim(),
-      startedAt: Date.now(),
-      startDate: localDateString(),
-      startTime: `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`
-    };
-    persist();
-    renderTimer();
-    showToast("Timer started.");
-  }
-
-  function stopTimer() {
-    const active = state.activeTimer;
-    if (!active) return;
-
-    const endDate = localDateString();
-    const now = new Date();
-    const startDate = active.startDate || localDateString(new Date(active.startedAt));
-    const startTime = active.startTime || `${String(new Date(active.startedAt).getHours()).padStart(2, "0")}:${String(new Date(active.startedAt).getMinutes()).padStart(2, "0")}`;
-    const endTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-
-    // Store sessions as one entry. Overnight work is represented with an end time earlier than start time.
-    state.entries.push({
-      id: makeId(),
-      date: startDate,
-      description: active.description,
-      start: startTime,
-      end: endTime,
-      endDate,
-      exactDurationMs: Math.max(1000, Date.now() - active.startedAt)
-    });
-    state.activeTimer = null;
-    persist();
-    // Show the week containing the session's start date.
-    els.weekStart.value = weekDateString(dateFromString(startDate));
-    render();
-    showToast("Session saved to your timesheet.");
-  }
-
-  function makeId() {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
-  }
-
-  function handleEntrySubmit(event) {
-    event.preventDefault();
-    const date = els.entryDate.value;
-    const description = els.entryDescription.value.trim();
-    const start = els.entryStart.value;
-    const end = els.entryEnd.value;
-    if (!date || !description || !start || !end) {
-      showToast("Please complete all entry fields.");
-      return;
-    }
-    if (start === end) {
-      showToast("Start and end times can't be the same.");
-      return;
-    }
-
-    const editId = els.editId.value;
-    const updated = { id: editId || makeId(), date, description, start, end };
-    if (editId) {
-      state.entries = state.entries.map((entry) => entry.id === editId ? updated : entry);
-      showToast("Entry updated.");
-    } else {
-      state.entries.push(updated);
-      showToast("Entry added.");
-    }
-    persist();
-    els.weekStart.value = weekDateString(dateFromString(date));
-    resetEntryForm();
-    render();
-  }
-
-  function beginEdit(id) {
-    const entry = state.entries.find((item) => item.id === id);
-    if (!entry) return;
-    els.editId.value = entry.id;
-    els.entryDate.value = entry.date;
-    els.entryDescription.value = entry.description;
-    els.entryStart.value = entry.start;
-    els.entryEnd.value = entry.end;
-    els.saveEntryButton.textContent = "Save changes";
-    els.cancelEditButton.classList.remove("hidden");
-    els.entryForm.scrollIntoView({ behavior: "smooth", block: "center" });
-    els.entryDescription.focus();
-  }
-
-  function deleteEntry(id) {
-    state.entries = state.entries.filter((entry) => entry.id !== id);
-    persist();
-    render();
-    showToast("Entry deleted.");
-  }
-
-  function csvCell(value) {
-    const string = String(value ?? "");
-    return `"${string.replace(/"/g, '""')}"`;
-  }
-
-  function exportCsv() {
-    const entries = entriesForSelectedWeek();
-    if (!entries.length) {
-      showToast("There are no entries to export for this week.");
-      return;
-    }
-    const rows = [
-      ["Date", "Task / Project", "Start Time", "End Time", "Duration (hours)", "Hourly Rate (USD)", "Amount (USD)"],
-      ...entries.map((entry) => {
-        const minutes = entryDuration(entry);
-        return [
-          entry.date,
-          entry.description,
-          entry.start,
-          entry.end,
-          (minutes / 60).toFixed(2),
-          state.hourlyRate.toFixed(2),
-          (minutes / 60 * state.hourlyRate).toFixed(2)
-        ];
-      })
-    ];
-    const csv = rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
-    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `timesheet-${selectedWeek()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    showToast("CSV export downloaded.");
-  }
-
-  function initialize() {
-    load();
-    els.hourlyRate.value = state.hourlyRate.toFixed(2).replace(/\.00$/, "");
-    els.weekStart.value = weekDateString();
-    els.entryDate.value = localDateString();
-
-    els.hourlyRate.addEventListener("change", () => {
-      const parsed = Number(els.hourlyRate.value);
-      state.hourlyRate = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-      els.hourlyRate.value = String(state.hourlyRate);
+      const saved = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY) || "{}");
+      state.entries = migrate(saved);
+      if (Number.isFinite(saved.hourlyRate) && saved.hourlyRate >= 0) state.hourlyRate = saved.hourlyRate;
       persist();
-      renderEntries();
-    });
-
-    els.timerForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      if (state.activeTimer) {
-        stopTimer();
-        return;
-      }
-      const description = els.timerDescription.value.trim();
-      if (!description) {
-        els.timerDescription.focus();
-        showToast("Add a task or project before starting.");
-        return;
-      }
-      startTimer(description);
-    });
-
-    els.entryForm.addEventListener("submit", handleEntrySubmit);
-    els.cancelEditButton.addEventListener("click", resetEntryForm);
-    els.weekStart.addEventListener("change", () => {
-      if (els.weekStart.value) {
-        // Normalize any selected date to the Monday of that week.
-        els.weekStart.value = weekDateString(dateFromString(els.weekStart.value));
-      }
-      renderEntries();
-    });
-
-    els.entriesBody.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) return;
-      const { action, id } = button.dataset;
-      if (action === "edit") beginEdit(id);
-      if (action === "delete") {
-        state.deleteId = id;
-        if (typeof els.confirmDialog.showModal === "function") els.confirmDialog.showModal();
-        else if (window.confirm("Delete this entry?")) deleteEntry(id);
-      }
-    });
-
-    els.confirmDialog.addEventListener("close", () => {
-      if (els.confirmDialog.returnValue === "delete" && state.deleteId) deleteEntry(state.deleteId);
-      state.deleteId = null;
-    });
-
-    els.exportButton.addEventListener("click", exportCsv);
-
-    render();
-    state.tickHandle = setInterval(() => {
-      if (state.activeTimer) renderTimer();
-    }, 1000);
+    } catch { toast("Saved data could not be read. Reload before making changes to avoid replacing it."); return false; }
+    return true;
   }
-
-  initialize();
+  const periodLabel = (p) => p.kind === "work" ? "Work" : p.kind === "rest" ? "Rest · paid" : `Meal · ${unpaid(p) ? "unpaid" : "paid"}${p.dutyFree ? " · duty-free" : " · duties not excluded"}`;
+  function renderEntries() {
+    const expanded = new Set([...$("entriesBody").querySelectorAll("details[open]")].map(el => el.dataset.day));
+    const entries = selected(), total = entries.reduce((sum, e) => sum + paidMs(e), 0);
+    $("weekHours").textContent = $("tableWeekTotal").textContent = duration(total);
+    $("weekEarnings").textContent = money(total / 3600000 * state.hourlyRate);
+    $("weekSessions").textContent = entries.length;
+    $("entryCount").textContent = `${entries.length} daily record${entries.length === 1 ? "" : "s"}`;
+    $("emptyState").classList.toggle("hidden", entries.length > 0);
+    $("entriesBody").innerHTML = entries.map(e => `<tr>
+      <td class="muted-cell">${escape(e.date)}</td>
+      <td class="task-cell"><span title="${escape(e.notes)}">${escape(e.notes || "No notes yet")}</span></td>
+      <td><details data-day="${escape(e.id)}" ${expanded.has(e.id) ? "open" : ""}><summary>${e.periods.filter(p => p.kind === "work").length} work period(s) · ${e.periods.filter(p => p.kind !== "work").length} break(s)${current(e) ? " · active" : ""}</summary><ul class="period-list">${e.periods.map(p => `<li><strong>${periodLabel(p)}</strong><br>${timestamp(p.start)} → ${p.end === null ? "In progress" : timestamp(p.end)}</li>`).join("")}</ul></details></td>
+      <td class="duration-cell">${duration(paidMs(e))}</td><td>${money(paidMs(e) / 3600000 * state.hourlyRate)}</td>
+      <td><div class="row-actions"><button class="button secondary" data-action="edit" data-id="${escape(e.id)}" ${current(e) ? "disabled" : ""}>Edit</button><button class="icon-button" data-action="delete" data-id="${escape(e.id)}" aria-label="Delete ${escape(e.date)}" ${current(e) ? "disabled" : ""}>×</button></div></td></tr>`).join("");
+  }
+  function renderTimer() {
+    const day = activeDay(), p = current(day);
+    const displayDay = day || state.entries.find(e => e.date === dateKey(Date.now()));
+    $("timerDisplay").textContent = clock(displayDay ? paidMs(displayDay) : 0);
+    $("timerStatus").className = `pill ${p ? "active" : "idle"}`;
+    $("timerStatus").textContent = p ? periodLabel(p) : "Off the clock";
+    $("timerButton").textContent = p ? "■ Stop work" : "▶ Start / resume work";
+    $("restButton").disabled = !p || p.kind === "meal";
+    $("mealButton").disabled = !p || p.kind === "rest";
+    $("restButton").textContent = p?.kind === "rest" ? "End rest / resume work" : "Start paid rest break";
+    $("mealButton").textContent = p?.kind === "meal" ? "End meal / resume work" : "Start meal break";
+    $("dutyFree").disabled = p?.kind !== "meal";
+    $("dutyFree").checked = p?.kind === "meal" && p.dutyFree === true;
+    $("timerHelp").textContent = p ? `${day.date} · Paid time today. ${p.kind === "meal" ? "Confirm duty-free only if the entire meal has no work duties. Meals under 30 minutes remain paid." : "Stop when work ends; resume to add another period to this day. Notes save as you type."}` : "Start work immediately; notes are optional. Stopping and restarting on the same date uses one daily record.";
+  }
+  function render() { renderEntries(); renderTimer(); }
+  function closePeriod(now) {
+    const p = current();
+    if (p) p.end = Math.max(p.start, now);
+  }
+  function start() {
+    const now = Date.now(), date = dateKey(now);
+    let day = state.entries.find(e => e.date === date);
+    if (day?.periods.some(p => p.end > now)) { toast("This day has a recorded period ending in the future. Correct it before starting."); return; }
+    if (!day) { day = { id: crypto.randomUUID(), date, notes: $("timerDescription").value, periods: [] }; state.entries.push(day); }
+    day.periods.push({ kind: "work", start: now, end: null });
+    $("timerDescription").value = day.notes;
+    $("weekStart").value = monday(date);
+    persist(); render();
+  }
+  function changeBreak(kind) {
+    const day = activeDay(), p = current(day);
+    if (!p) return;
+    const now = Date.now(), next = p.kind === kind ? "work" : kind;
+    closePeriod(now);
+    day.periods.push({ kind: next, start: now, end: null, dutyFree: false });
+    persist(); render();
+  }
+  function addPeriod(p = {}) {
+    const row = document.createElement("div"); row.className = "period-row";
+    row.innerHTML = `<label class="field"><span>Type</span><select class="period-kind"><option value="work">Work</option><option value="rest">Paid rest</option><option value="meal">Meal</option></select></label>
+      <label class="field"><span>Start</span><input class="period-start" type="datetime-local" step="0.001" required></label>
+      <label class="field"><span>End</span><input class="period-end" type="datetime-local" step="0.001" required></label>
+      <label class="check-label"><input class="period-duty" type="checkbox"> Meal entirely duty-free</label>
+      <button class="icon-button remove-period" type="button" aria-label="Remove period">×</button>`;
+    row.querySelector("select").value = p.kind || "work";
+    row.querySelector(".period-start").value = p.start != null ? localInput(p.start) : "";
+    row.querySelector(".period-end").value = p.end != null ? localInput(p.end) : "";
+    row.querySelector(".period-duty").checked = p.dutyFree === true;
+    const setDuty = () => { row.querySelector(".period-duty").disabled = row.querySelector("select").value !== "meal"; };
+    row.querySelector("select").addEventListener("change", setDuty); setDuty();
+    row.querySelector("button").addEventListener("click", () => row.remove());
+    $("periodEditor").appendChild(row);
+  }
+  function resetEditor() { $("entryForm").reset(); $("editId").value = ""; $("periodEditor").replaceChildren(); addPeriod(); $("entryEditor").open = false; }
+  function edit(id) {
+    const day = state.entries.find(e => e.id === id); if (!day || current(day)) return;
+    $("editId").value = id; $("entryDescription").value = day.notes;
+    $("periodEditor").replaceChildren(); day.periods.forEach(addPeriod);
+    $("entryEditor").open = true; $("entryEditor").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function save(event) {
+    event.preventDefault();
+    const id = $("editId").value;
+    if (id && current(state.entries.find(e => e.id === id))) { toast("Stop this day before editing it."); return; }
+    const periods = [...$("periodEditor").children].map(row => ({ kind: row.querySelector("select").value, start: new Date(row.querySelector(".period-start").value).getTime(), end: new Date(row.querySelector(".period-end").value).getTime(), dutyFree: row.querySelector(".period-duty").checked }));
+    const error = validate(periods); if (error) { toast(error); return; }
+    periods.sort((a, b) => a.start - b.start);
+    const date = dateKey(periods[0].start);
+    if (state.entries.some(e => e.date === date && e.id !== id)) { toast("A record already exists for this date. Edit that daily record to add periods."); return; }
+    const day = { id: id || crypto.randomUUID(), date, notes: $("entryDescription").value, periods };
+    state.entries = state.entries.filter(e => e.id !== id); state.entries.push(day);
+    persist(); resetEditor(); if (date === dateKey(Date.now())) $("timerDescription").value = day.notes; $("weekStart").value = monday(date); render(); toast("Daily record saved.");
+  }
+  function exportCsv() {
+    const days = selected(); if (!days.length) { toast("No daily records to export."); return; }
+    const rows = [["Workday", "Activities / tasks", "Work start/end records", "Break start/end records", "Paid hours", "Hourly rate (USD)", "Estimated amount (USD)", "Record status"], ...days.map(e => {
+      const times = kind => e.periods.filter(p => (p.kind === "work") === kind).map(p => `${periodLabel(p)}: ${localInput(p.start)} / ${p.end === null ? "IN PROGRESS" : localInput(p.end)}`).join("; ");
+      return [e.date, e.notes, times(true), times(false), (paidMs(e) / 3600000).toFixed(6), state.hourlyRate, (paidMs(e) / 3600000 * state.hourlyRate).toFixed(2), current(e) ? "In progress" : "Stopped"];
+    })];
+    const cell = v => { let s = String(v ?? ""); if (/^[\s]*[=+@-]/.test(s)) s = "'" + s; return `"${s.replace(/"/g, '""')}"`; };
+    const url = URL.createObjectURL(new Blob(["\uFEFF", rows.map(r => r.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a"); a.href = url; a.download = `timesheet-${$("weekStart").value}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  if (!load()) { document.querySelectorAll("button, input, textarea").forEach(el => { el.disabled = true; }); return; }
+  $("hourlyRate").value = state.hourlyRate;
+  $("weekStart").value = monday();
+  $("timerDescription").value = (activeDay() || state.entries.find(e => e.date === dateKey(Date.now())))?.notes || "";
+  $("timerForm").addEventListener("submit", event => { event.preventDefault(); if (activeDay()) { closePeriod(Date.now()); persist(); render(); } else start(); });
+  $("timerDescription").addEventListener("input", () => { const day = activeDay() || state.entries.find(e => e.date === dateKey(Date.now())); if (day) { day.notes = $("timerDescription").value; persist(); renderEntries(); } });
+  $("restButton").addEventListener("click", () => changeBreak("rest"));
+  $("mealButton").addEventListener("click", () => changeBreak("meal"));
+  $("dutyFree").addEventListener("change", () => { const p = current(); if (p?.kind === "meal") { p.dutyFree = $("dutyFree").checked; persist(); render(); } });
+  $("hourlyRate").addEventListener("change", () => { if (!$("hourlyRate").checkValidity()) return; state.hourlyRate = Number($("hourlyRate").value); persist(); renderEntries(); });
+  $("weekStart").addEventListener("change", () => { $("weekStart").value = monday($("weekStart").value || dateKey(Date.now())); renderEntries(); });
+  $("addPeriodButton").addEventListener("click", () => addPeriod());
+  $("entryForm").addEventListener("submit", save);
+  $("cancelEditButton").addEventListener("click", resetEditor);
+  $("entriesBody").addEventListener("click", event => { const button = event.target.closest("button[data-action]"); if (!button || button.disabled) return; if (button.dataset.action === "edit") edit(button.dataset.id); else { deleteId = button.dataset.id; $("confirmDialog").showModal(); } });
+  $("confirmDialog").addEventListener("close", () => { if ($("confirmDialog").returnValue === "delete" && !current(state.entries.find(e => e.id === deleteId))) { state.entries = state.entries.filter(e => e.id !== deleteId); if ($("editId").value === deleteId) resetEditor(); persist(); render(); } deleteId = null; });
+  $("exportButton").addEventListener("click", exportCsv);
+  resetEditor(); render();
+  setInterval(() => { if (activeDay()) { renderTimer(); renderEntries(); } }, 1000);
 })();

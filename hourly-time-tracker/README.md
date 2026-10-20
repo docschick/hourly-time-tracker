@@ -1,59 +1,44 @@
 # Hourly Time Tracker
 
-A small, single-user time tracker built with plain HTML, CSS, and JavaScript. Designed for tracking hourly contract work without a framework, backend, or account.
+A personal tracker for daily work records, built with plain HTML, CSS, and JavaScript. No dependencies, backend, account, or build step.
 
-## Features
+## Daily workflow
 
-- Start and stop a live timer for a task or project
-- Add, edit, and delete manual work entries
-- Review sessions by week
-- Calculate tracked hours and estimated earnings using a configurable hourly rate
-- Export the selected week's timesheet as CSV
-- Persist entries and timer state in browser local storage
-- Responsive layout for desktop and mobile
+- **Start / resume work** immediately, with optional activity and task notes. Stop when work ends. Restarting on the same local date adds another work period to the same row; off-clock gaps are excluded.
+- **Start paid rest break**, then end it to resume work. Rest breaks remain paid, including short breaks of 5–20 minutes.
+- **Start meal break**, then end it to resume work. A meal is deducted only if it lasts at least 30 minutes and you check that the entire meal is free of work duties. Interrupted meals and shorter meals remain paid. There is no automatic break deduction.
+- Notes save as you type. One daily row contains all work and break start/end timestamps. Expand its times column to inspect every period.
+- Use **Add or correct a daily record**, or **Edit**, to record missed work, correct times, update notes, or add breaks. Enter separate work periods around breaks. Periods cannot overlap. Stop an active day before editing or deleting it.
+- Review weeks starting Monday and export CSV. Each CSV row is one daily record, with all work and break timestamps, meal duty-free status, paid hours, and estimated earnings. An active record is marked in progress.
+
+Record all hours worked. Off-the-clock work and inaccurate reporting are prohibited by the supplied company policy. State-specific rules may also apply. The app implements the supplied break policy without jurisdiction-specific rules or overtime calculations. Earnings are estimates at a single configurable rate (default $100/hour).
+
+An overnight workday stays on the date its first period began until stopped. Full dates are retained for every timestamp. Starting again after midnight creates or resumes the new calendar date's row. The browser clock continues through sleep or reload; the app never automatically stops time or caps hours. Review and correct forgotten timers.
 
 ## Run locally
 
-No dependencies or build step are required.
+From this directory, open `index.html`, or run:
 
-1. Clone or download this repository.
-2. Open `index.html` in a modern browser.
-
-For a local web server, you can also run:
-
-```bash
+```sh
 python3 -m http.server 8000
 ```
 
 Then visit <http://localhost:8000>.
 
-## Deploy with GitHub Pages
+From the repository root, run `python3 -m http.server 8000 --directory hourly-time-tracker` instead. For GitHub Pages, publish the contents of `hourly-time-tracker/`, or access that subdirectory when serving the repository root.
 
-1. Push the repository to GitHub.
-2. Open the repository's **Settings → Pages**.
-3. Under build and deployment, select **Deploy from a branch**.
-4. Select the `main` branch and `/ (root)` folder, then save.
+## Data and migration
 
-## Data and privacy
+Records and the current work/break state are saved to localStorage in this browser and origin. They do not sync across browsers or devices. Changing the server port or switching between a local file and a server changes the storage origin. Export CSV periodically; clearing site data erases records. CSV is a readable timesheet, not a supported restore/import format.
 
-Entries are stored in `localStorage` in the current browser and on the current device. They are not automatically synced across devices or browsers. Clearing site data can erase them, so export CSV backups periodically. If deployed publicly, each visitor has their own local data in their own browser.
+The first run automatically groups v1 sessions by their start date, retaining task descriptions as daily notes, each session's times and exact elapsed duration, and any running timer. The original `hourly-time-tracker-v1` data remains untouched; new saves use `hourly-time-tracker-v2`. Existing overlapping legacy sessions are preserved for review; corrections require nonoverlapping periods. Manual edits keep millisecond precision in recorded timestamps.
 
-## Notes
+## Tests
 
-- The default hourly rate is $100; change it to your rate.
-- Week views start on Monday.
-- Manually entered times are interpreted as local time.
-- If an end time is earlier than its start time, the entry is treated as an overnight session.
-- The timer uses the browser's clock. If the browser or device sleeps, the displayed elapsed time catches up when it wakes.
+Requires Node.js with the built-in test runner; no packages to install:
 
-## Possible next steps
+```sh
+node --test tests/*.test.cjs
+```
 
-- Add client/project names and billable/non-billable flags
-- Add break tracking
-- Add weekly invoice summaries
-- Add import from CSV or JSON backup
-- Add tests for duration and weekly-total calculations
-
-## License
-
-Choose a license before publishing if you want to specify how others may use, modify, or distribute the project.
+Tests cover paid breaks, duty-free meal eligibility, split days, active timers, legacy migration, overnight work, and correction validation.

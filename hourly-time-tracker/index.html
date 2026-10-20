@@ -6,6 +6,7 @@
   <meta name="description" content="A simple personal time tracker for hourly work.">
   <title>Hourly Time Tracker</title>
   <link rel="stylesheet" href="src/styles.css">
+  <script src="src/time-records.js" defer></script>
   <script src="src/app.js" defer></script>
 </head>
 <body>
@@ -22,7 +23,7 @@
       <div>
         <p class="eyebrow">YOUR WORKDAY, AT A GLANCE</p>
         <h1>Time well tracked.</h1>
-        <p class="subhead">Keep your work sessions organized and your billable hours clear.</p>
+        <p class="subhead">One row per workday. Every work period, break, and activity accounted for.</p>
       </div>
       <label class="rate-control">
         <span>Hourly rate ($)</span>
@@ -34,37 +35,46 @@
       <article class="summary-card">
         <span class="summary-label">This week</span>
         <strong id="weekHours">0h 00m</strong>
-        <span class="summary-detail">Total tracked time</span>
+        <span class="summary-detail">Paid time, including paid breaks</span>
       </article>
       <article class="summary-card">
-        <span class="summary-label">Billable earnings</span>
+        <span class="summary-label">Estimated earnings</span>
         <strong id="weekEarnings">$0.00</strong>
         <span class="summary-detail">Based on your hourly rate</span>
       </article>
       <article class="summary-card">
-        <span class="summary-label">Sessions</span>
+        <span class="summary-label">Workdays</span>
         <strong id="weekSessions">0</strong>
-        <span class="summary-detail">Entries this week</span>
+        <span class="summary-detail">Daily records this week</span>
       </article>
     </section>
+
+    <aside class="policy-note">
+      <strong>Record all hours worked.</strong> Off-the-clock work and inaccurate reporting are prohibited. Record actual work and meal start/end times. Short rest breaks of 5–20 minutes are paid. Meals are unpaid only when 30+ minutes and completely free of work duties; otherwise this tracker counts them as paid. State-specific rules may also apply.
+    </aside>
 
     <section class="panel timer-panel">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">CURRENT SESSION</p>
-          <h2>What are you working on?</h2>
+          <p class="eyebrow">CURRENT WORKDAY</p>
+          <h2>Track your day</h2>
         </div>
         <span id="timerStatus" class="pill idle"><span class="status-dot"></span> Not tracking</span>
       </div>
       <form id="timerForm" class="timer-form">
         <label class="field grow">
-          <span>Task or project</span>
-          <input id="timerDescription" type="text" maxlength="120" placeholder="e.g. Gitar documentation" required>
+          <span>Daily activities &amp; task notes</span>
+          <textarea id="timerDescription" rows="2" maxlength="10000" placeholder="Add activities and tasks as your day progresses…"></textarea>
         </label>
         <div class="timer-readout" id="timerDisplay" aria-live="off">00:00:00</div>
-        <button id="timerButton" class="button primary" type="submit">▶ Start timer</button>
+        <button id="timerButton" class="button primary" type="submit">▶ Start / resume work</button>
       </form>
-      <p class="helper" id="timerHelp">Start a timer when you begin. Stop it to save the session to your timesheet.</p>
+      <div class="break-controls">
+        <button id="restButton" class="button secondary" type="button">Start paid rest break</button>
+        <button id="mealButton" class="button secondary" type="button">Start meal break</button>
+        <label class="check-label"><input id="dutyFree" type="checkbox"> This entire meal is free of work duties</label>
+      </div>
+      <p class="helper" id="timerHelp">Start or resume work to add time to the same daily record.</p>
     </section>
 
     <section class="panel">
@@ -82,44 +92,32 @@
         </div>
       </div>
 
-      <form id="entryForm" class="entry-form">
-        <input id="editId" type="hidden">
-        <div class="form-grid">
-          <label class="field">
-            <span>Date</span>
-            <input id="entryDate" type="date" required>
-          </label>
-          <label class="field wide">
-            <span>Task or project</span>
-            <input id="entryDescription" type="text" maxlength="120" placeholder="What did you work on?" required>
-          </label>
-          <label class="field">
-            <span>Start time</span>
-            <input id="entryStart" type="time" required>
-          </label>
-          <label class="field">
-            <span>End time</span>
-            <input id="entryEnd" type="time" required>
-          </label>
+      <details id="entryEditor" class="entry-editor">
+        <summary>Add or correct a daily record</summary>
+        <form id="entryForm" class="entry-form">
+          <input id="editId" type="hidden">
+          <label class="field"><span>Daily activities &amp; task notes</span><textarea id="entryDescription" rows="2" maxlength="10000"></textarea></label>
+          <p class="helper">Enter every work period and break with actual start/end dates and times. Split work around breaks; gaps between periods are off the clock. Overnight work stays on the date it started.</p>
+          <div id="periodEditor"></div>
           <div class="form-actions">
-            <button id="saveEntryButton" class="button primary" type="submit">Add entry</button>
-            <button id="cancelEditButton" class="button text-button hidden" type="button">Cancel edit</button>
+            <button id="addPeriodButton" class="button secondary" type="button">+ Add period</button>
+            <button id="saveEntryButton" class="button primary" type="submit">Save daily record</button>
+            <button id="cancelEditButton" class="button text-button" type="button">Cancel</button>
           </div>
-        </div>
-        <p class="helper">Entries use your local time. For an overnight session, set an end time earlier than the start time.</p>
-      </form>
+        </form>
+      </details>
 
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Date</th><th>Task / project</th><th>Time</th><th>Duration</th><th>Amount</th><th><span class="sr-only">Actions</span></th></tr>
+            <tr><th>Date</th><th>Activities / tasks</th><th>Work &amp; break times</th><th>Paid time</th><th>Amount</th><th><span class="sr-only">Actions</span></th></tr>
           </thead>
           <tbody id="entriesBody"></tbody>
         </table>
         <div id="emptyState" class="empty-state">
           <span class="empty-icon">◷</span>
           <strong>No entries for this week yet</strong>
-          <span>Start a timer or add your first work session above.</span>
+          <span>Start work or add your first daily record above.</span>
         </div>
       </div>
       <div class="table-footer">
