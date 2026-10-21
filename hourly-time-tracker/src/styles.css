@@ -135,7 +135,8 @@ button:disabled { cursor: default; opacity: .45; }
 .entry-editor { margin-bottom: 22px; }
 summary { cursor: pointer; color: var(--blue); font-size: 12px; line-height: 1.7; }
 .entry-form { margin-top: 12px; }
-.period-row { display: grid; grid-template-columns: .7fr 1.4fr 1.4fr 1fr auto; gap: 10px; align-items: end; margin: 16px 0; }
+.period-row { display: grid; grid-template-columns: .7fr 2fr 2fr 1fr auto; gap: 10px; align-items: end; margin: 16px 0; }
+.period-boundary { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; min-width: 0; }
 .period-row input { width: 100%; }
 .period-row .check-label { align-self: center; }
 .period-row input[type=checkbox] { width: auto; }
