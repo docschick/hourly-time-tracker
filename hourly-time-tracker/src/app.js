@@ -124,7 +124,7 @@
     })];
     const cell = v => { let s = String(v ?? ""); if (/^[\s]*[=+@-]/.test(s)) s = "'" + s; return `"${s.replace(/"/g, '""')}"`; };
     const url = URL.createObjectURL(new Blob(["\uFEFF", rows.map(r => r.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8;" }));
-    const a = document.createElement("a"); a.href = url; a.download = `timesheet-${$("weekStart").value}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const a = document.createElement("a"); a.href = url; a.download = `timesheet-${monday()}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   if (!load()) { document.querySelectorAll("button, input, textarea").forEach(el => { el.disabled = true; }); return; }
   $("hourlyRate").value = state.hourlyRate;
