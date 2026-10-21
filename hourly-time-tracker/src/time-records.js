@@ -5,6 +5,17 @@
     const d = new Date(value);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
+  function manualFields(timestamp) {
+    if (!Number.isFinite(timestamp)) return { date: "", time: "" };
+    const d = new Date(timestamp);
+    return { date: dateKey(d), time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` };
+  }
+  function manualTimestamp(date, time) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return NaN;
+    const value = new Date(`${date}T${time}:00`).getTime();
+    const parsed = manualFields(value);
+    return parsed.date === date && parsed.time === time ? value : NaN;
+  }
   function unpaid(period, now = Date.now()) {
     return period.kind === "meal" && period.dutyFree === true && (period.end ?? now) - period.start >= 30 * 60000;
   }
@@ -49,7 +60,7 @@
     }
     return [...days.values()];
   }
-  const api = { dateKey, unpaid, paidMs, validate, migrate };
+  const api = { dateKey, manualFields, manualTimestamp, unpaid, paidMs, validate, migrate };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.TimeRecords = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

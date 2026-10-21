@@ -42,3 +42,44 @@ test('manual corrections reject missing work, reversed times, and overlaps', () 
   assert.ok(validate([p('meal', 0, 30)]));
   assert.equal(validate([p('work', 0, 60), p('rest', 60, 75), p('work', 75, 120)]), '');
 });
+
+const { manualFields, manualTimestamp } = require('../src/time-records.js');
+test('manual fields use local dates and hours/minutes without seconds', () => {
+  const timestamp = new Date(2026, 9, 21, 9, 7, 42, 123).getTime();
+  assert.deepEqual(manualFields(timestamp), { date: '2026-10-21', time: '09:07' });
+  assert.deepEqual(manualFields(undefined), { date: '', time: '' });
+  assert.deepEqual(manualFields(null), { date: '', time: '' });
+});
+test('unchanged minute fields round retained timer timestamps to visible precision', () => {
+  const start = new Date(2026, 9, 21, 12, 0, 50, 123).getTime();
+  const end = new Date(2026, 9, 21, 12, 30, 10, 456).getTime();
+  const restore = value => { const f = manualFields(value); return manualTimestamp(f.date, f.time); };
+  const meal = { kind: 'meal', start: restore(start), end: restore(end), dutyFree: true };
+  assert.equal(meal.start, new Date(2026, 9, 21, 12, 0).getTime());
+  assert.equal(meal.end, new Date(2026, 9, 21, 12, 30).getTime());
+  assert.equal(unpaid(meal), true);
+  assert.equal(paidMs({ periods: [meal] }), 0);
+});
+test('manual edits expose overlaps previously hidden by timestamp seconds', () => {
+  const hidden = value => { const f = manualFields(value); return manualTimestamp(f.date, f.time); };
+  const periods = [
+    { kind: 'work', start: hidden(new Date(2026, 9, 21, 9, 0).getTime()), end: hidden(new Date(2026, 9, 21, 10, 1, 59).getTime()) },
+    { kind: 'rest', start: hidden(new Date(2026, 9, 21, 10, 0, 1).getTime()), end: hidden(new Date(2026, 9, 21, 10, 15).getTime()) }
+  ];
+  assert.match(validate(periods), /overlap/);
+  periods[1].start = manualTimestamp('2026-10-21', '10:02');
+  assert.equal(validate(periods), '');
+});
+test('changed and new manual times use minute precision, including overnight work', () => {
+  const original = new Date(2026, 9, 21, 9, 7, 42, 123).getTime();
+  assert.equal(manualTimestamp('2026-10-21', '09:08', original), new Date(2026, 9, 21, 9, 8).getTime());
+  assert.equal(manualTimestamp('2026-10-22', '09:07', original), new Date(2026, 9, 22, 9, 7).getTime());
+  const work = { kind: 'work', start: manualTimestamp('2026-10-21', '23:30'), end: manualTimestamp('2026-10-22', '01:15') };
+  assert.equal(validate([work]), '');
+  assert.equal(paidMs({ periods: [work] }), 105 * min);
+});
+test('manual input rejects missing fields, invalid dates, and second precision', () => {
+  for (const [date, time] of [['', '09:00'], ['2026-10-21', ''], ['2026-02-30', '09:00'], ['2026-10-21', '25:00'], ['2026-10-21', '09:00:10']]) {
+    assert.ok(Number.isNaN(manualTimestamp(date, time)));
+  }
+});

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const KEY = "hourly-time-tracker-v2", OLD_KEY = "hourly-time-tracker-v1";
-  const { dateKey, paidMs, unpaid, migrate, validate } = TimeRecords;
+  const { dateKey, manualFields, manualTimestamp, paidMs, unpaid, migrate, validate } = TimeRecords;
   const $ = (id) => document.getElementById(id);
   const state = { entries: [], hourlyRate: 100 };
   let deleteId = null, toastHandle;
@@ -83,13 +83,22 @@
   function addPeriod(p = {}) {
     const row = document.createElement("div"); row.className = "period-row";
     row.innerHTML = `<label class="field"><span>Type</span><select class="period-kind"><option value="work">Work</option><option value="rest">Paid rest</option><option value="meal">Meal</option></select></label>
-      <label class="field"><span>Start</span><input class="period-start" type="datetime-local" step="0.001" required></label>
-      <label class="field"><span>End</span><input class="period-end" type="datetime-local" step="0.001" required></label>
+      <div class="period-boundary">
+        <label class="field"><span>Start date</span><input class="period-start-date" type="date" required></label>
+        <label class="field"><span>Start time</span><input class="period-start-time" type="time" step="60" required></label>
+      </div>
+      <div class="period-boundary">
+        <label class="field"><span>End date</span><input class="period-end-date" type="date" required></label>
+        <label class="field"><span>End time</span><input class="period-end-time" type="time" step="60" required></label>
+      </div>
       <label class="check-label"><input class="period-duty" type="checkbox"> Meal entirely duty-free</label>
       <button class="icon-button remove-period" type="button" aria-label="Remove period">×</button>`;
     row.querySelector("select").value = p.kind || "work";
-    row.querySelector(".period-start").value = p.start != null ? localInput(p.start) : "";
-    row.querySelector(".period-end").value = p.end != null ? localInput(p.end) : "";
+    for (const boundary of ["start", "end"]) {
+      const fields = manualFields(p[boundary]);
+      row.querySelector(`.period-${boundary}-date`).value = fields.date;
+      row.querySelector(`.period-${boundary}-time`).value = fields.time;
+    }
     row.querySelector(".period-duty").checked = p.dutyFree === true;
     const setDuty = () => { row.querySelector(".period-duty").disabled = row.querySelector("select").value !== "meal"; };
     row.querySelector("select").addEventListener("change", setDuty); setDuty();
@@ -107,7 +116,13 @@
     event.preventDefault();
     const id = $("editId").value;
     if (id && current(state.entries.find(e => e.id === id))) { toast("Stop this day before editing it."); return; }
-    const periods = [...$("periodEditor").children].map(row => ({ kind: row.querySelector("select").value, start: new Date(row.querySelector(".period-start").value).getTime(), end: new Date(row.querySelector(".period-end").value).getTime(), dutyFree: row.querySelector(".period-duty").checked }));
+    const periods = [...$("periodEditor").children].map(row => {
+      const readTime = boundary => manualTimestamp(
+        row.querySelector(`.period-${boundary}-date`).value,
+        row.querySelector(`.period-${boundary}-time`).value
+      );
+      return { kind: row.querySelector("select").value, start: readTime("start"), end: readTime("end"), dutyFree: row.querySelector(".period-duty").checked };
+    });
     const error = validate(periods); if (error) { toast(error); return; }
     periods.sort((a, b) => a.start - b.start);
     const date = dateKey(periods[0].start);
