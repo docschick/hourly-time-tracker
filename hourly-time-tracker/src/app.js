@@ -98,7 +98,6 @@
       const fields = manualFields(p[boundary]);
       row.querySelector(`.period-${boundary}-date`).value = fields.date;
       row.querySelector(`.period-${boundary}-time`).value = fields.time;
-      if (Number.isFinite(p[boundary])) row.dataset[boundary] = String(p[boundary]);
     }
     row.querySelector(".period-duty").checked = p.dutyFree === true;
     const setDuty = () => { row.querySelector(".period-duty").disabled = row.querySelector("select").value !== "meal"; };
@@ -120,8 +119,7 @@
     const periods = [...$("periodEditor").children].map(row => {
       const readTime = boundary => manualTimestamp(
         row.querySelector(`.period-${boundary}-date`).value,
-        row.querySelector(`.period-${boundary}-time`).value,
-        row.dataset[boundary] === undefined ? undefined : Number(row.dataset[boundary])
+        row.querySelector(`.period-${boundary}-time`).value
       );
       return { kind: row.querySelector("select").value, start: readTime("start"), end: readTime("end"), dutyFree: row.querySelector(".period-duty").checked };
     });

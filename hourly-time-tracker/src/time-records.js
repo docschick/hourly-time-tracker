@@ -10,11 +10,8 @@
     const d = new Date(timestamp);
     return { date: dateKey(d), time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` };
   }
-  function manualTimestamp(date, time, original) {
+  function manualTimestamp(date, time) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return NaN;
-    // Editing notes or a break type must not round an existing timer's timestamps.
-    const previous = manualFields(original);
-    if (previous.date === date && previous.time === time) return original;
     const value = new Date(`${date}T${time}:00`).getTime();
     const parsed = manualFields(value);
     return parsed.date === date && parsed.time === time ? value : NaN;

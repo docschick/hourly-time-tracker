@@ -50,15 +50,25 @@ test('manual fields use local dates and hours/minutes without seconds', () => {
   assert.deepEqual(manualFields(undefined), { date: '', time: '' });
   assert.deepEqual(manualFields(null), { date: '', time: '' });
 });
-test('unchanged minute fields preserve exact timer durations and meal eligibility', () => {
+test('unchanged minute fields round retained timer timestamps to visible precision', () => {
   const start = new Date(2026, 9, 21, 12, 0, 50, 123).getTime();
   const end = new Date(2026, 9, 21, 12, 30, 10, 456).getTime();
-  const restore = value => { const f = manualFields(value); return manualTimestamp(f.date, f.time, value); };
+  const restore = value => { const f = manualFields(value); return manualTimestamp(f.date, f.time); };
   const meal = { kind: 'meal', start: restore(start), end: restore(end), dutyFree: true };
-  assert.equal(meal.start, start);
-  assert.equal(meal.end, end);
-  assert.equal(unpaid(meal), false);
-  assert.equal(paidMs({ periods: [meal] }), end - start);
+  assert.equal(meal.start, new Date(2026, 9, 21, 12, 0).getTime());
+  assert.equal(meal.end, new Date(2026, 9, 21, 12, 30).getTime());
+  assert.equal(unpaid(meal), true);
+  assert.equal(paidMs({ periods: [meal] }), 0);
+});
+test('manual edits expose overlaps previously hidden by timestamp seconds', () => {
+  const hidden = value => { const f = manualFields(value); return manualTimestamp(f.date, f.time); };
+  const periods = [
+    { kind: 'work', start: hidden(new Date(2026, 9, 21, 9, 0).getTime()), end: hidden(new Date(2026, 9, 21, 10, 1, 59).getTime()) },
+    { kind: 'rest', start: hidden(new Date(2026, 9, 21, 10, 0, 1).getTime()), end: hidden(new Date(2026, 9, 21, 10, 15).getTime()) }
+  ];
+  assert.match(validate(periods), /overlap/);
+  periods[1].start = manualTimestamp('2026-10-21', '10:02');
+  assert.equal(validate(periods), '');
 });
 test('changed and new manual times use minute precision, including overnight work', () => {
   const original = new Date(2026, 9, 21, 9, 7, 42, 123).getTime();
